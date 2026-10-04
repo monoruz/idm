@@ -1,0 +1,152 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Downloads</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 3v12m0 0l-5-5m5 5l5-5M5 21h14' stroke='%233b82f6' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{asset "app.css"}}">
+<script src="{{asset "htmx.min.js"}}" defer></script>
+<script src="{{asset "app.js"}}" defer></script>
+</head>
+{{end}}
+
+{{define "page"}}{{template "head"}}
+<body>
+{{template "icons"}}
+<div class="app">
+  <aside id="sidebar">{{template "sidebar" .}}</aside>
+  <main id="main">{{template "main" .}}</main>
+</div>
+<dialog id="dlg"><div id="dlg-body"></div></dialog>
+<div id="toast" aria-live="polite"></div>
+</body>
+</html>
+{{end}}
+
+{{define "view"}}{{template "main" .}}
+<aside id="sidebar" hx-swap-oob="true">{{template "sidebar" .}}</aside>
+{{end}}
+
+{{define "sidebar"}}
+<div class="brand">
+  <svg class="ic"><use href="#i-down"/></svg><span>Downloads</span>
+  <span id="total" class="total"></span>
+</div>
+<nav hx-target="#main" hx-push-url="true">
+  <div class="nav-h">Library</div>
+  <a href="/" hx-get="/view" hx-push-url="/" class="{{if and (not .Sel) (eq .Filter "")}}on{{end}}"><svg class="ic"><use href="#i-list"/></svg>All</a>
+  <a href="/?f=active" hx-get="/view?f=active" hx-push-url="/?f=active" class="{{if eq .Filter "active"}}on{{end}}"><svg class="ic"><use href="#i-down"/></svg>Downloading</a>
+  <a href="/?f=unfinished" hx-get="/view?f=unfinished" hx-push-url="/?f=unfinished" class="{{if eq .Filter "unfinished"}}on{{end}}"><svg class="ic"><use href="#i-clock"/></svg>Unfinished</a>
+  <a href="/?f=completed" hx-get="/view?f=completed" hx-push-url="/?f=completed" class="{{if eq .Filter "completed"}}on{{end}}"><svg class="ic"><use href="#i-check"/></svg>Completed</a>
+
+  <div class="nav-h">Queues
+    <button class="icon-btn sm" title="New queue" hx-get="/queues/new" hx-target="#dlg-body" hx-push-url="false"><svg class="ic"><use href="#i-plus"/></svg></button>
+  </div>
+  {{range .Queues}}
+  <a href="/?q={{.ID}}" hx-get="/view?q={{.ID}}" hx-push-url="/?q={{.ID}}" class="{{if eq $.Sel .ID}}on{{end}}">
+    <span class="dot{{if .Running}} run{{end}}" title="{{if .Running}}Running{{else}}Stopped{{end}}"></span>
+    <span class="qname">{{.Name}}<small>{{limit .SpeedLimit}}</small></span>
+    {{if .Total}}<span class="count">{{if .Active}}{{.Active}}/{{end}}{{.Total}}</span>{{end}}
+  </a>
+  {{end}}
+</nav>
+<div class="side-foot">
+  <button class="ghost" hx-get="/settings" hx-target="#dlg-body"><svg class="ic"><use href="#i-gear"/></svg>Settings</button>
+  <button class="ghost" hx-post="/logout" title="Log out"><svg class="ic"><use href="#i-out"/></svg></button>
+</div>
+{{end}}
+
+{{define "main"}}
+<header class="top">
+  <div class="title">
+    <h1>{{.Title}}</h1>
+    {{with .Queue}}<p class="sub">{{limit .SpeedLimit}} · {{.MaxConcurrent}} at a time{{if .Default}} · default{{end}}</p>{{end}}
+  </div>
+  <div class="tools">
+    {{with .Queue}}
+      {{if .Running}}
+      <button class="btn" hx-post="/queues/{{.ID}}/stop" hx-swap="none"><svg class="ic"><use href="#i-stop"/></svg>Stop queue</button>
+      {{else}}
+      <button class="btn" hx-post="/queues/{{.ID}}/start" hx-swap="none"><svg class="ic"><use href="#i-play"/></svg>Start queue</button>
+      {{end}}
+      <button class="icon-btn" title="Queue settings" hx-get="/queues/{{.ID}}" hx-target="#dlg-body"><svg class="ic"><use href="#i-sliders"/></svg></button>
+    {{end}}
+    <button class="icon-btn" title="Remove completed from list" hx-post="/clear?q={{.Sel}}" hx-swap="none"><svg class="ic"><use href="#i-broom"/></svg></button>
+    <button class="btn primary" hx-get="/add?q={{.Sel}}" hx-target="#dlg-body"><svg class="ic"><use href="#i-plus"/></svg>Add</button>
+  </div>
+</header>
+<ul id="list" class="list"{{if .Sel}} data-sortable="{{.Sel}}"{{end}}>
+  {{range .Items}}{{template "row" .}}{{else}}
+  <li class="empty">
+    <svg class="ic xl"><use href="#i-down"/></svg>
+    <p>Nothing here yet.</p>
+    <p class="muted">Press <kbd>Ctrl</kbd>+<kbd>V</kbd> anywhere to add links from your clipboard.</p>
+  </li>
+  {{end}}
+</ul>
+{{end}}
+
+{{define "row"}}
+<li class="row st-{{.Status}}{{if .Active}} active{{end}}{{if ne .Status "completed"}} unf{{end}}" id="d-{{.ID}}" data-id="{{.ID}}">
+  <span class="handle" aria-hidden="true"><svg class="ic"><use href="#i-grip"/></svg></span>
+  <svg class="ic cat"><use href="#{{icon .Category}}"/></svg>
+  <div class="info" hx-get="/d/{{.ID}}" hx-target="#dlg-body">
+    <div class="name" title="{{.URL}}">{{name .}}</div>
+    {{if ne .Status "completed"}}<div class="bar"><i style="width:{{pct .Percent}}%"></i></div>{{end}}
+    <div class="meta">
+      <span><span class="done">{{bytes .Downloaded}}</span>{{if ge .Size 0}} / {{bytes .Size}}{{end}}</span>
+      {{if ne .Status "completed"}}<span class="pct">{{if gt .Size 0}}{{pct .Percent}}%{{end}}</span>{{end}}
+      <span class="speed">{{if .Active}}{{speed .Speed}}{{end}}</span>
+      <span class="eta">{{eta .ETA}}</span>
+      <span class="status">{{status .}}</span>
+      <span class="tag">{{.QueueName}}</span>
+      {{if .Error}}<span class="error" title="{{.Error}}">{{.Error}}</span>{{end}}
+    </div>
+  </div>
+  <div class="acts">
+    {{if ne .Status "completed"}}
+    <button class="icon-btn sm hov" title="Move up" hx-post="/d/{{.ID}}/move?to=up" hx-swap="none"><svg class="ic"><use href="#i-up"/></svg></button>
+    <button class="icon-btn sm hov" title="Move down" hx-post="/d/{{.ID}}/move?to=down" hx-swap="none"><svg class="ic"><use href="#i-dn"/></svg></button>
+      {{if and .Active (eq .Status "downloading")}}
+      <button class="icon-btn" title="Pause" hx-post="/d/{{.ID}}/pause" hx-swap="none"><svg class="ic"><use href="#i-pause"/></svg></button>
+      {{else}}
+      <button class="icon-btn" title="{{if eq .Status "error"}}Retry{{else}}Start now{{end}}" hx-post="/d/{{.ID}}/resume" hx-swap="none"><svg class="ic"><use href="#i-play"/></svg></button>
+      {{end}}
+    {{end}}
+    <button class="icon-btn" title="Delete" hx-get="/d/{{.ID}}/delete" hx-target="#dlg-body"><svg class="ic"><use href="#i-trash"/></svg></button>
+  </div>
+</li>
+{{end}}
+
+{{define "icons"}}
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <defs>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></symbol>
+  <symbol id="i-dn" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+  <symbol id="i-broom" viewBox="0 0 24 24"><path d="M5 12h14M7 12l1 8h8l1-8M10 12V4h4v8"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v2M12 7v2M12 11v2M10.5 15h3v3h-3z"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-app" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 8h18M7 6h.01M10 6h.01"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4"/></symbol>
+  </defs>
+</svg>
+{{end}}

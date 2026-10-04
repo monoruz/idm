@@ -1,0 +1,170 @@
+{{define "add"}}
+<form class="dlg wide" hx-post="/add" hx-swap="none">
+  <header><h2>Add downloads</h2><button type="button" class="icon-btn" data-close title="Close">✕</button></header>
+  <div class="paste">
+    <textarea name="text" id="add-text" rows="4" autofocus spellcheck="false"
+      placeholder="Paste links here — any text works, links are picked out automatically.&#10;Add mirrors on one line:  https://a/file.zip | https://b/file.zip"
+      hx-post="/add/preview" hx-trigger="input changed delay:350ms" hx-target="#preview" hx-swap="innerHTML" hx-include="this"></textarea>
+    <button type="button" class="btn" data-clip><svg class="ic"><use href="#i-clip"/></svg>Paste from clipboard</button>
+  </div>
+  <div id="preview"><p class="pv-empty muted">No links found yet.</p></div>
+  <div class="grid">
+    <label>Queue
+      <select name="queue" id="add-queue">
+        {{range .Queues}}<option value="{{.ID}}" data-running="{{.Running}}"{{if $.Sel}}{{if eq $.Sel .ID}} selected{{end}}{{else if .Default}} selected{{end}}>{{.Name}} — {{limit .SpeedLimit}}</option>{{end}}
+      </select>
+    </label>
+    <label>Connections per file
+      <input type="number" name="conns" min="1" max="{{.Max}}" value="{{.Conns}}">
+    </label>
+    <label class="span2"><span>New folder for this batch <span class="muted">(optional)</span></span>
+      <input name="batch" placeholder="e.g. Holiday photos — created inside {{.BaseDir}}">
+    </label>
+  </div>
+  <label class="check" id="start-row"><input type="checkbox" name="start" checked> Start the queue now</label>
+  <p class="muted small" id="running-hint" hidden>This queue is running — the links will be appended to it.</p>
+  <footer>
+    <button type="button" class="btn" data-close>Cancel</button>
+    <button class="btn primary">Add to queue</button>
+  </footer>
+</form>
+{{end}}
+
+{{define "preview"}}
+{{if .}}
+<div class="pv">
+  <table>
+    <thead><tr>
+      <th><input type="checkbox" checked data-all title="Select all"></th>
+      <th>Link <span class="muted">({{len .}})</span></th>
+      <th>Folder</th>
+      <th>Mirrors</th>
+    </tr></thead>
+    <tbody>
+    {{range $i, $l := .}}
+      <tr>
+        <td><input type="checkbox" name="inc" value="{{$i}}" checked></td>
+        <td class="url" title="{{.URL}}">{{.URL}}<input type="hidden" name="url" value="{{.URL}}"></td>
+        <td><input name="dir" placeholder="Auto"></td>
+        <td><input name="mirrors" value="{{.Mirrors}}" placeholder="optional, space separated"></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<p class="pv-empty muted">No links found yet.</p>
+{{end}}
+{{end}}
+
+{{define "details"}}
+{{$d := .D}}
+<form class="dlg" hx-post="/d/{{$d.ID}}" hx-swap="none">
+  <header><h2 class="ellipsis">{{name $d}}</h2><button type="button" class="icon-btn" data-close title="Close">✕</button></header>
+  <dl class="facts">
+    <dt>Status</dt><dd>{{status $d}}{{if $d.Error}} — <span class="error">{{$d.Error}}</span>{{end}}</dd>
+    <dt>Size</dt><dd>{{bytes $d.Downloaded}}{{if ge $d.Size 0}} of {{bytes $d.Size}}{{end}}{{if and (ne $d.Status "completed") (not $d.Resumable) (gt $d.Size -1)}} · <span class="muted">server can't resume</span>{{end}}</dd>
+    {{if $d.Dir}}<dt>Saved to</dt><dd class="mono">{{$d.Dir}}/{{$d.FileName}}</dd>{{end}}
+    {{if $d.Category}}<dt>Category</dt><dd>{{$d.Category}}</dd>{{end}}
+    <dt>Link</dt><dd class="mono break">{{$d.URL}}</dd>
+    <dt>Added</dt><dd>{{$d.CreatedAt.Format "2006-01-02 15:04"}}</dd>
+    {{if not $d.CompletedAt.IsZero}}<dt>Completed</dt><dd>{{$d.CompletedAt.Format "2006-01-02 15:04"}}</dd>{{end}}
+  </dl>
+  {{if .Editable}}
+  <div class="grid">
+    <label>Folder <input name="dir" value="{{$d.DirOverride}}" placeholder="Auto (by category)"></label>
+    <label>File name <input name="name" value="{{$d.FileName}}" placeholder="Auto (from server)"></label>
+  </div>
+  {{end}}
+  {{if ne $d.Status "completed"}}
+  <div class="grid">
+    <label>Queue
+      <select name="queue">{{range .Queues}}<option value="{{.ID}}"{{if eq .ID $d.QueueID}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+    </label>
+    <label>Connections <input type="number" name="conns" min="1" max="{{.Max}}" value="{{$d.Connections}}"></label>
+  </div>
+  <label><span>Mirror links <span class="muted">— one per line; used in parallel and as fallback when resuming</span></span>
+    <textarea name="mirrors" rows="3" spellcheck="false">{{join $d.Mirrors "\n"}}</textarea>
+  </label>
+  {{if $d.Active}}<p class="muted small">Changes to mirrors and connections apply the next time this download starts.</p>{{end}}
+  {{end}}
+  <footer>
+    <button type="button" class="btn" data-close>Close</button>
+    {{if ne $d.Status "completed"}}<button class="btn primary">Save</button>{{end}}
+  </footer>
+</form>
+{{end}}
+
+{{define "delete"}}
+<form class="dlg narrow" hx-post="/d/{{.ID}}/delete" hx-swap="none">
+  <header><h2>Delete download?</h2></header>
+  <p class="ellipsis">{{name .}}</p>
+  {{if eq .Status "completed"}}
+  <label class="check"><input type="checkbox" name="disk"> Also delete the file from disk</label>
+  {{else}}
+  <p class="muted small">Partially downloaded data will be removed.</p>
+  {{end}}
+  <footer>
+    <button type="button" class="btn" data-close>Cancel</button>
+    <button class="btn danger">Delete</button>
+  </footer>
+</form>
+{{end}}
+
+{{define "queue"}}
+<form class="dlg narrow" hx-post="/queues" hx-swap="none">
+  <header><h2>{{if .ID}}Queue settings{{else}}New queue{{end}}</h2><button type="button" class="icon-btn" data-close title="Close">✕</button></header>
+  <input type="hidden" name="id" value="{{.ID}}">
+  <label>Name <input name="name" value="{{.Name}}" required autofocus></label>
+  <div class="grid">
+    <label>Speed limit, KB/s <input type="number" name="limit" min="0" value="{{kb .SpeedLimit}}"><span class="muted small">0 = unlimited</span></label>
+    <label>Downloads at a time <input type="number" name="max" min="1" max="20" value="{{.MaxConcurrent}}"></label>
+  </div>
+  <label class="check"><input type="checkbox" name="default"{{if .Default}} checked disabled{{end}}> Preselect when adding links</label>
+  {{if .Default}}<input type="hidden" name="default" value="on">{{end}}
+  <footer>
+    {{if and .ID (not .Builtin)}}<button type="button" class="btn danger left" hx-post="/queues/{{.ID}}/delete" hx-swap="none" hx-confirm="Delete this queue? Its downloads move to the default queue.">Delete</button>{{end}}
+    <button type="button" class="btn" data-close>Cancel</button>
+    <button class="btn primary">Save</button>
+  </footer>
+</form>
+{{end}}
+
+{{define "settings"}}
+<form class="dlg" hx-post="/settings" hx-swap="none">
+  <header><h2>Settings</h2><button type="button" class="icon-btn" data-close title="Close">✕</button></header>
+  <label>Download folder <input name="basedir" value="{{.S.BaseDir}}" required class="mono"></label>
+  <label class="check"><input type="checkbox" name="organize"{{if .S.Organize}} checked{{end}}> Sort files into category folders</label>
+  <label><span>Categories <span class="muted">— one per line: <code>Folder: ext ext ext</code>; anything else goes to “Other”</span></span>
+    <textarea name="categories" rows="7" spellcheck="false" class="mono">{{.Cats}}</textarea>
+  </label>
+  <div class="grid">
+    <label>Default connections per file <input type="number" name="conns" min="1" max="{{.Max}}" value="{{.S.DefaultConnections}}"></label>
+  </div>
+  <fieldset>
+    <legend>Change password</legend>
+    <div class="grid">
+      <label>Current <input type="password" name="curpw" autocomplete="current-password"></label>
+      <label>New <input type="password" name="newpw" autocomplete="new-password" minlength="8"></label>
+    </div>
+  </fieldset>
+  <footer>
+    <button type="button" class="btn" data-close>Cancel</button>
+    <button class="btn primary">Save</button>
+  </footer>
+</form>
+{{end}}
+
+{{define "login"}}{{template "head"}}
+<body class="login-page">
+  <form class="login" method="post" action="/login">
+    <svg class="ic xl accent"><use href="#i-down"/></svg>
+    <h1>Downloads</h1>
+    <input type="password" name="password" placeholder="Password" autofocus required autocomplete="current-password">
+    {{with .Error}}<p class="error">{{.}}</p>{{end}}
+    <button class="btn primary">Sign in</button>
+  </form>
+  {{template "icons"}}
+</body>
+</html>
+{{end}}

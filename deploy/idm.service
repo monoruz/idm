@@ -1,0 +1,34 @@
+[Unit]
+Description=idm download manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=idm
+Group=idm
+EnvironmentFile=-/etc/idm/env
+ExecStart=/usr/local/bin/idm -addr ${IDM_ADDR} -data /var/lib/idm -dir ${IDM_DOWNLOAD_DIR}
+Restart=on-failure
+RestartSec=3
+# SIGTERM lets idm checkpoint every active download before exiting.
+TimeoutStopSec=20
+
+StateDirectory=idm
+StateDirectoryMode=0700
+UMask=0022
+
+# Hardening: idm can only write its database and the download folder.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ReadWritePaths=/var/lib/idm /srv/downloads
+
+[Install]
+WantedBy=multi-user.target
